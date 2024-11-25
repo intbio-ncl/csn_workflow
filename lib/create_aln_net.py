@@ -1,185 +1,188 @@
 # This script produces an Alignment network based on the Coevolution Networks produced by coev_net_creator.py
 
 import argparse
+from ctypes import alignment
 from Bio import AlignIO
-import os
-
-parser = argparse.ArgumentParser(description="Alignment Network Creator Script")
-parser.add_argument("-wd", "--workDir", help="RRCoevNets folder", type=str, required=True)
-parser.add_argument("-f", "--filter", help="Filter number to ignore coevolving columns that occur too frequently", type=int, required=True)
-parser.add_argument("-a", "--aln", help="Alignment file", type=str, default=False)
-args = parser.parse_args()
-
-_WORKDIR = args.workDir
-_FILTER = args.filter
-_ALNFILE = AlignIO.read(args.aln, "fasta")
-_ALNFILE.sort()
-_FILELIST = sorted(os.listdir(_WORKDIR))
-_FILELIST = [os.path.join(_WORKDIR, i) for i in _FILELIST]
-
-pair_dict = {}
-
-########################################
-
-########################################
-
 import networkx as nx
 from itertools import combinations
 from tqdm import tqdm
-import time
-import os.path
+import polars as pl
 
-def createAlnMap(index):
 
-    aln_map = {}
-    gapped_seq = str(_ALNFILE[index].seq)
-    ungapped_seq = str(_ALNFILE[index].seq.ungap('-'))
+########################################
+
+
+def createAlnVec(seq):
+    """Alternative 2D matrix for actual residue position in alignment"""
+
+    aln_vec = []
+    gapped_seq = str(seq.seq)
 
     count = 1
 
     for i in range(len(gapped_seq)):
-
-        if gapped_seq[i] == '-':
+        if gapped_seq[i] == "-":
             continue
 
-        aln_map[str(count)] = str(i + 1)
+        aln_vec.append(i + 1)
         count += 1
 
-    return aln_map
+    return aln_vec
 
 
-def readCoevNetwork(file, aln_map):
-
+def readCoevNetworkVec(seq, file, aln_vec, pair_dict):
+    """outputs newtwork as duplex tuple vec, (res_aln, res_prot)(res_aln, res_prot)"""
     G = nx.read_graphml(file)
+    source_aln_vec = []
+    source_aa_vec = []
+    sink_aln_vec = []
+    sink_aa_vec = []
 
     for edge in G.edges():
-
-        source = int(edge[0].split('-')[-1])
-        sink = int(edge[1].split('-')[-1])
+        source = int(edge[0].split("-")[-1])
+        sink = int(edge[1].split("-")[-1])
 
         if source > sink:
             temp = sink
             sink = source
             source = temp
 
-        pair = aln_map[str(source)] + '-' + aln_map[str(sink)]
+        try:
+            # Ensures that ValueError is captured prior to any list extension
+            source_index = aln_vec.index(source)
+            sink_index = aln_vec.index(sink)
 
-        if pair not in pair_dict.keys():
+            source_aln_vec.append(source)
+            source_aa_vec.append(source_index)
+            sink_aln_vec.append(sink)
+            sink_aa_vec.append(sink_index)
+        except ValueError:
+            continue
 
-            if int(edge[0].split('-')[1]) < int(edge[1].split('-')[1]):
-                pair_dict[pair] = [(edge[0], edge[1])]
-            else:
-                pair_dict[pair] = [(edge[1], edge[0])]
-        else:
+    # Ensures consistency and captures shape error
+    assert (
+        len(source_aln_vec)
+        == len(source_aa_vec)
+        == len(sink_aln_vec)
+        == len(sink_aa_vec)
+    ), "Mismatch in lengths of vectors!"
 
-            if int(edge[0].split('-')[1]) < int(edge[1].split('-')[1]):
-                pair_dict[pair] += [(edge[0], edge[1])]
-            else:
-                pair_dict[pair] += [(edge[1], edge[0])]
+    pair_dict[seq.id] = {
+        "source_aln": source_aln_vec,
+        "source_aa": source_aa_vec,
+        "sink_aln": sink_aln_vec,
+        "sink_aa": sink_aa_vec,
+    }
 
-
-def read_partition_file():
-
-    fr = open("./partitions.txt", "r")
-
-    part_count_dict = {}
-    prot_part_dict = {}
-
-    for line in fr:
-
-        line = line.strip()
-        temp_arr = line.split(":")
-
-        if temp_arr[0] == "PART":
-            part_count_dict[temp_arr[1]] = temp_arr[2]
-        elif temp_arr[0] == "PROT":
-            prot_part_dict[temp_arr[1]] = temp_arr[2]
-
-    return part_count_dict, prot_part_dict
+    return pair_dict
 
 
-def createALNGraph():
+def construct_df(pair_dict):
+    """Creates a polars dataframe with ID seq.id and then 4 columns containing
+    residue information"""
+    frames = []
 
-    global _FILTER
+    for key, nested_data in pair_dict.items():
+        df = pl.DataFrame(nested_data)
+
+        df = df.with_columns(pl.lit(key).alias("ID"))
+
+        frames.append(df)
+
+    result = pl.concat(frames, how="vertical")
+
+    result = result.select(["ID"] + [col for col in result.columns if col != "ID"])
+    result.write_csv("id_df.csv")
+
+    return result
+
+
+def compute_frequencies(df):
+    """Computes how often coev resiudes occur"""
+
+    frequency_df = df.group_by(["source_aln", "sink_aln"]).agg(
+        [
+            pl.col("ID").count().alias("frequency"),  # Count occurrences
+        ]
+    )
+
+    frequency_df = frequency_df.sort("frequency", descending=True)
+    frequency_df.write_csv("freq.csv")
+
+    return frequency_df
+
+
+def remove_noise(df, cutoff):
+    """Removes coevs if they occur in n% of sequences"""
+
+    filtered_df = df.filter(pl.col("frequency") <= cutoff)
+
+    filtered_df.write_csv("filtered_df.csv")
+
+    return filtered_df
+
+
+def createALNGraphDf(freq_df, full_df):
+    """Creates alignment network from dataframe"""
 
     G = nx.Graph()
-    fw = open("./coev_freqs.txt", "w")
 
-    prot_part_dict = {}
-    part_count_dict = {}
+    # Perform an inner join on source_aa and sink_aa to find matches
+    matched_df = freq_df.join(full_df, on=["source_aln", "sink_aln"], how="inner")
 
-    if os.path.isfile("./partitions.txt"):
-        part_count_dict, prot_part_dict = read_partition_file()
+    # Create tuples of source_aln and sink_aln
+    result_df = matched_df.select(
+        [
+            pl.col("ID"),
+            pl.col("source_aln"),
+            pl.col("sink_aln"),
+            pl.col("source_aa"),
+            pl.col("sink_aa"),
+        ]
+    )
+    result_df.write_csv("result_df.csv")
+    G = extract_links(result_df, G)
+    # filtered_rows = result_df.filter(pl.col("sink_aln") == 420)
 
-    full_dict = {}
-
-    counter = 0
-
-    for key in tqdm(pair_dict.keys()):
-
-        value = pair_dict[key]
-
-        fw.write(key + ' ; ' + str(len(value)) + ' ; ' + str(value) + '\n')
-
-        if prot_part_dict != {}:
-            thr = 0.6
-            temp_arr = []
-            max_part = -1
-            max_val = -1
-
-            for prot in value:
-                temp_arr += [prot_part_dict[prot[0].split('-')[0]]]
-
-            for part in part_count_dict.keys():
-                if temp_arr.count(part) > max_val:
-                    max_part = part
-                    max_val = temp_arr.count(part)
-
-            _FILTER = thr * int(part_count_dict[max_part])
-
-        if len(value) <= _FILTER:
-
-            indicesA = [temp[0] for temp in value]
-            indicesB = [temp[1] for temp in value]
-
-            edgesA = list(combinations(indicesA, 2))
-            edgesB = list(combinations(indicesB, 2))
-
-            if not edgesA == [] and not edgesB == []:
-
-                for edge in edgesA:
-                    G.add_edge(edge[0], edge[1])
-
-                for edge in edgesB:
-                    G.add_edge(edge[0], edge[1])
-
-        counter += 1
-
-    fw.close()
     return G
 
 
-def workflow():
+def extract_links(df, G):
+    """
+    Extract links for every unique (source_aln, sink_aln) pair.
 
-    print("Creating Pair Dict")
+    """
+    # Find unique (source_aln, sink_aln) pairs
+    unique_pairs = (
+        df.select(["source_aln", "sink_aln"])
+        .unique()
+        .sort(by="source_aln", descending=False)
+    )
+    # Loop through each unique (source_aln, sink_aln) pair
+    for pair in unique_pairs.iter_rows():
+        source_aln, sink_aln = pair
 
-    tqdm.write('')
+        # Filter rows matching the current pair
+        matching_rows = df.filter(
+            (pl.col("source_aln") == source_aln) & (pl.col("sink_aln") == sink_aln)
+        )
 
-    for i in tqdm(range(len(_FILELIST))):
+        # Extract `source_aa` and `sink_aa`
+        # Extract `source_aa` and `sink_aa` with `ID` prepended
+        source_aa_list = [
+            f"{row['ID']}-{row['source_aa']}" for row in matching_rows.to_dicts()
+        ]
+        sink_aa_list = [
+            f"{row['ID']}-{row['sink_aa']}" for row in matching_rows.to_dicts()
+        ]
 
-        aln_map = createAlnMap(i)
-        readCoevNetwork(_FILELIST[i], aln_map)
+        # Add edges for all combinations of source_aa
+        G.add_edges_from(combinations(source_aa_list, 2))
 
-    tqdm.write('')
-    time.sleep(1)
+        # Add edges for all combinations of sink_aa
+        G.add_edges_from(combinations(sink_aa_list, 2))
 
-    print("Computing ALN Graph")
-    G = createALNGraph()
-
-    out_path = './aln_net.graphml'
-
-    print(f"Writing ALN Graph to {out_path}")
-    nx.write_graphml(G, out_path)
+    return G
 
 
 ########################################
@@ -187,8 +190,40 @@ def workflow():
 ########################################
 
 
-def main():
-    workflow()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Alignment Network Creator Script")
+    parser.add_argument(
+        "-f",
+        "--filter",
+        help="Filter % to ignore coevolving columns that occur too frequently (i.e 0.6 = 60%)",
+        type=float,
+    )
+    parser.add_argument("-a", "--aln", help="Alignment file path", type=str)
+    parser.add_argument("-g", "--coev", help="Coev graph file path", type=str)
+    parser.add_argument("-o", "--output", help="Alignment graph file name", type=str)
+    args = parser.parse_args()
 
-if __name__ == '__main__':
-    main()
+    coev_cutoff = args.filter
+    coev_graph_path = args.coev
+    aln_graph_name = args.output
+    alignment_file = args.aln
+
+    alignment = AlignIO.read(alignment_file, "fasta")
+    seq_number = len(alignment)
+    cutoff = seq_number * coev_cutoff
+    pair_dict = {}
+
+    for x in range(seq_number):
+        current_seq = alignment[x]
+        aln_vec = createAlnVec(current_seq)
+        pair_vec = readCoevNetworkVec(current_seq, coev_graph_path, aln_vec, pair_dict)
+
+    df = construct_df(pair_dict)
+
+    frequencies = compute_frequencies(df)
+    cleaned = remove_noise(frequencies, cutoff)
+
+    G = createALNGraphDf(cleaned, df)
+
+    print(f"Writing ALN Graph to {aln_graph_name}")
+    nx.write_graphml(G, f"{aln_graph_name}.graphml")

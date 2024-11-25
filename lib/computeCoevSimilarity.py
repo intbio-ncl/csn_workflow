@@ -1,208 +1,153 @@
-
-
 import argparse
-import os
-from multiprocessing import Queue, Process, Manager
-
-
-parser = argparse.ArgumentParser(description="Coev Similarity Compute Script")
-parser.add_argument("-wd", "--workDir", help="Working directory", type=str, required=True)
-parser.add_argument("-a", "--aln", help="Alignment Graph", type=str, required=True)
-parser.add_argument("-cpu", '--threads', help="Number of threads to use. Default is 1", type=int, default=1)
-args = parser.parse_args()
-
-_THREADS = args.threads
-_NETDIR = args.workDir
-_ALNPATH = args.aln
-_FILELIST = sorted(os.listdir(_NETDIR))
-_FILELIST = [os.path.join(_NETDIR, i) for i in _FILELIST]
-
-manager = Manager()
-
-max_clique_dict = manager.dict()
-full_score_dict = manager.dict()
-_POSITION = 0
-
-########################################
-
-########################################
-
 import networkx as nx
-from tqdm import tqdm
-from copy import deepcopy
 import numpy as np
 import pandas as pd
-import time
+import polars as pl
+from itertools import combinations
 
-def checkAnalysisDir():
-
-    	if not os.path.exists(_ANALYSISDIR):
-    		os.makedirs(_ANALYSISDIR)
+pl.Config.set_tbl_rows(100)
 
 
-def prepareScoreDict(curr_file):
+def compute_score_matrix(coev_path):
+    """Computes ECC score matrix prior to jaccard similarity calculation"""
 
-    score_dict = {}
-
-    for file in _FILELIST:
-
-        file_root = file.split('/')[-1].split('.')[0]
-
-        if file_root == curr_file:
-            score_dict[file_root] = 0
-            continue
-
-        score_dict[file_root] = np.nan
-
-    return score_dict
-
-
-
-def computeOneFile(file, aln_net):
-
-    global max_clique_dict
-    global full_score_dict
-
-    file_root = file.split('/')[-1].split('.')[0]
-
-    score_dict = prepareScoreDict(file_root)
-
-    coev_net = nx.read_graphml(file)
+    # Determine cliques in coev graph
+    coev_net = nx.read_graphml(coev_path)
     cliques = list(nx.find_cliques(coev_net))
+    cliques_int = [list(map(int, clique)) for clique in cliques]
 
-    max_clique_dict[file_root] = nx.graph_number_of_cliques(coev_net)
-    # print file_root
-    # print max_clique_dict[file_root]
+    # Import pair df
+    df = pl.read_csv("result_df.csv")
 
+    # Initialise a labelled 2D score matrix
+    unique_ids = df.select(pl.col("ID").unique()).to_series().to_list()
+    matrix_size = len(unique_ids)
+    init_matrix = np.zeros((matrix_size, matrix_size), dtype=int)
+    score_matrix = pl.DataFrame(init_matrix, unique_ids)
+    score_matrix = score_matrix.with_columns(pl.Series("id", unique_ids))
+    score_matrix = score_matrix.select(["id"] + score_matrix.columns[:-1])
 
-    for clique in cliques:
+    for clique in cliques_int:
+        """
+        Filter based on current clique coev residues, then group to single
+        protein per row
+        """
+        potential_ecc = df.filter(
+            (pl.col("sink_aln").is_in(clique)) | (pl.col("source_aln").is_in(clique))
+        )
+        grouped = potential_ecc.group_by("ID").agg(
+            pl.col("source_aln"), pl.col("sink_aln")
+        )
 
-        flag = False
-
-        res_count_dict = {}
-
-        for res in clique:
-
-            if res in list(nx.nodes(aln_net)):
-
-                for neighbor in list(nx.all_neighbors(aln_net, res)):
-
-                    prot = neighbor.split('-')[0]
-
-                    if prot not in res_count_dict.keys():
-                        res_count_dict[prot] = 1
-                    else:
-                        res_count_dict[prot] += 1
-            else:
-                flag = True
-                break
-
-        if flag:
-            max_clique_dict[file_root] -= 1
-            continue
-
-        for key, value in res_count_dict.items():
-
-            if value == len(clique):
-
-                    if np.isnan(score_dict[key]):
-                        score_dict[key] = 1
-                    else:
-                        score_dict[key] += 1
-
-        full_score_dict[file_root] = score_dict
-
-
-def workflow(files, aln_net, position):
-
-    for file in files:
-        file_root = file.split('/')[-1].split('.')[0]
-        computeOneFile(file, aln_net)
-
-    time.sleep(1)
+        """
+        Determine all-or-nothing Equivalent Coevolving Cliques (ECC). If target
+        protein matches exact residue coev pairs then +1 in score matrix, else 
+        no increment. Does not allow partial matches
+        """
+        for target_row in grouped.iter_rows(named=True):
+            target_set = set(zip(target_row["source_aln"], target_row["sink_aln"]))
+            for comp_row in grouped.iter_rows(named=True):
+                comp_set = set(zip(comp_row["source_aln"], comp_row["sink_aln"]))
+                if target_row["ID"] != comp_row["ID"]:
+                    if target_set == comp_set:
+                        score_matrix = score_matrix.with_columns(
+                            pl.when(pl.col("id") == comp_row["ID"])
+                            .then(pl.col(target_row["ID"]) + 1)
+                            .otherwise(pl.col(target_row["ID"]))
+                            .alias(target_row["ID"])
+                        )
+    return score_matrix
 
 
-def parallel():
+def calculate_jaccard(score_matrix):
+    """Calculates the jaccard similarity score"""
 
-    global max_clique_dict
-    global full_score_dict
+    unique_ids = score_matrix.select(pl.col("id").unique()).to_series().to_list()
 
-    print("Reading ALN Net")
-    aln_net = nx.read_graphml(_ALNPATH)
+    # Initialise another empty matrix for Jaccard
+    matrix_size = len(unique_ids)
+    init_matrix = np.zeros((matrix_size, matrix_size), dtype=int)
+    jaccard_matrix = pl.DataFrame(init_matrix, unique_ids)
+    jaccard_matrix = jaccard_matrix.with_columns(pl.Series("id", unique_ids))
+    jaccard_matrix = jaccard_matrix.select(["id"] + jaccard_matrix.columns[:-1])
 
-    file_chunks = np.array_split(np.array(_FILELIST), _THREADS)
-    positions = [1,2,3,4]
-    processes = [Process(target=workflow, args=(list(chunk), aln_net, positions)) for chunk in file_chunks]
+    # get maximum number of unique combinations
+    comparisons = combinations(unique_ids, 2)
 
-    print("Comparing Coevolution Networks")
-    for p in processes:
-        p.start()
+    for id_a, id_b in comparisons:
+        if id_a == id_b:
+            pass
 
-    for p in processes:
-        p.join()
+        # Filter to target columns
+        targets = score_matrix.select(pl.col(id_a), pl.col(id_b))
 
+        # Calculate intersect
+        intersect_list = []
+        for intersection in targets.iter_rows():
+            intersect_list.append(min(intersection))
+        intersect = sum(intersect_list)
 
-    time.sleep(5)
+        # Calculate set size
+        source = score_matrix.select(pl.col(id_a)).sum().item()
+        target = score_matrix.select(pl.col(id_b)).sum().item()
 
+        # Calculate union and jaccard
+        union = source + target - intersect
+        jaccard = intersect / union if union != 0 else 0
 
-def createMatrix():
+        # Update jaccard symetrically
+        jaccard_matrix = jaccard_matrix.with_columns(
+            pl.when(pl.col("id") == id_a)
+            .then(jaccard)
+            .otherwise(pl.col(id_b))
+            .alias(id_b)
+        )
+        jaccard_matrix = jaccard_matrix.with_columns(
+            pl.when(pl.col("id") == id_b)
+            .then(jaccard)
+            .otherwise(pl.col(id_a))
+            .alias(id_a)
+        )
 
-
-    global max_clique_dict
-    global full_score_dict
-
-    dist_mat = np.zeros([len(full_score_dict.keys()), len(full_score_dict.keys())])
-    jac_mat = np.zeros([len(full_score_dict.keys()), len(full_score_dict.keys())])
-
-    counter = 0
-
-    for key in sorted(full_score_dict.keys()):
-
-        dist_mat[counter,] = [full_score_dict[key][inner_key] for inner_key in sorted(full_score_dict.keys())]
-        counter += 1
-
-
-    for i in range(len(dist_mat)):
-        for j in range(i+1, len(dist_mat[0])):
-
-            if dist_mat[i,j] == np.nan or dist_mat[j,i] == np.nan:
-                dist_mat[j,i] = 0
-                dist_mat[i,j] = 0
-                jac_mat[i,j] = 0
-                jac_mat[j,i] = 0
-
-            if dist_mat[j,i] < dist_mat[i,j]:
-                dist_mat[i,j] = dist_mat[j,i]
-
-            else:
-                dist_mat[j,i] = dist_mat[i,j]
-
-            prot1 = sorted(full_score_dict.keys())[i]
-            prot2 = sorted(full_score_dict.keys())[j]
-
-            jac_mat[i,j] = float(dist_mat[i,j]) / (max_clique_dict[prot1] + max_clique_dict[prot2] - float(dist_mat[i,j]))
-            jac_mat[j,i] = float(dist_mat[i,j]) / (max_clique_dict[prot1] + max_clique_dict[prot2] - float(dist_mat[i,j]))
+    return jaccard_matrix
 
 
-    dist_df = pd.DataFrame(dist_mat, columns=sorted(full_score_dict.keys()), index = sorted(full_score_dict.keys()))
-    jac_df = pd.DataFrame(jac_mat, columns=sorted(full_score_dict.keys()), index = sorted(full_score_dict.keys()))
+def create_csn(jaccard_matrix, threshold):
+    G = nx.Graph()
 
-    dist_df.to_csv('./mat.csv')
-    jac_df.to_csv('./jac.csv')
+    for col in jaccard_matrix.columns[1:]:
+        scores = jaccard_matrix[col].to_list()
+        row_ids = jaccard_matrix["id"].to_list()
+        G.add_node(col)
 
+        for score, row_id in zip(scores, row_ids):
+            if score != 0.0 and score > threshold:
+                G.add_edge(col, row_id, similarity=score)
 
-
-########################################
-
-########################################
-
-
-def main():
-
-    # checkAnalysisDir()
-    parallel()
-    createMatrix()
+    nx.write_graphml(G, f"csn_{threshold*100}.graphml")
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Coev Similarity Compute Script")
+    parser.add_argument(
+        "-c", "--coev", help="Coevolutionary Graph", type=str, required=True
+    )
+    parser.add_argument(
+        "-t",
+        "--threshold",
+        help="Threshold for similarity (i.e 0.4 for 40% or more)",
+        type=float,
+        required=True,
+    )
+    args = parser.parse_args()
+
+    coev_path = args.coev
+    threshold = args.threshold
+
+    score_matrix = compute_score_matrix(coev_path)
+    score_matrix.write_csv("score_matrix.csv")
+
+    jaccard = calculate_jaccard(score_matrix)
+    jaccard.write_csv("jaccard.csv")
+
+    create_csn(jaccard, threshold)
