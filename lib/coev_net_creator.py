@@ -1,17 +1,11 @@
-# This script takes a folder/single-file of CCMPred produced Coevolution Matrices, and a number N,
-# to create N sized coevolution networks for the given proteins
-
-
-########################################
-
-########################################
-
 import numpy as np
 import networkx as nx
 from copy import deepcopy
 
 
 def createNetwork(file, output_name, node_number):
+    """Creates an alignment network of resiude-residue coeveolution positions"""
+
     temp_mat = np.loadtxt(file)
 
     indices = [[], []]
@@ -37,11 +31,6 @@ def createNetwork(file, output_name, node_number):
         )
 
     nx.write_graphml(G, f"{output_name}.graphml")
-
-
-########################################
-
-########################################
 
 
 if __name__ == "__main__":

@@ -1,0 +1,4 @@
+biopython==1.84
+networkx==3.4.2
+numpy==2.1.3
+polars==1.14.0

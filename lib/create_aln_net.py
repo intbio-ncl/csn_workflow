@@ -1,15 +1,9 @@
-# This script produces an Alignment network based on the Coevolution Networks produced by coev_net_creator.py
-
 import argparse
 from ctypes import alignment
 from Bio import AlignIO
 import networkx as nx
 from itertools import combinations
-from tqdm import tqdm
 import polars as pl
-
-
-########################################
 
 
 def createAlnVec(seq):
@@ -167,7 +161,6 @@ def extract_links(df, G):
             (pl.col("source_aln") == source_aln) & (pl.col("sink_aln") == sink_aln)
         )
 
-        # Extract `source_aa` and `sink_aa`
         # Extract `source_aa` and `sink_aa` with `ID` prepended
         source_aa_list = [
             f"{row['ID']}-{row['source_aa']}" for row in matching_rows.to_dicts()
@@ -176,18 +169,10 @@ def extract_links(df, G):
             f"{row['ID']}-{row['sink_aa']}" for row in matching_rows.to_dicts()
         ]
 
-        # Add edges for all combinations of source_aa
         G.add_edges_from(combinations(source_aa_list, 2))
-
-        # Add edges for all combinations of sink_aa
         G.add_edges_from(combinations(sink_aa_list, 2))
 
     return G
-
-
-########################################
-
-########################################
 
 
 if __name__ == "__main__":
