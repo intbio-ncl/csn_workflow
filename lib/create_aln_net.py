@@ -193,7 +193,7 @@ if __name__ == "__main__":
     aln_graph_name = args.output
     alignment_file = args.aln
 
-    alignment = AlignIO.read(alignment_file, "fasta")
+    alignment = AlignIO.read(alignment_file, "clustal")
     seq_number = len(alignment)
     cutoff = seq_number * coev_cutoff
     pair_dict = {}

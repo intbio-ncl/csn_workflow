@@ -5,6 +5,7 @@ import numpy as np
 import polars as pl
 import time
 from multiprocessing import Pool, set_start_method, Manager
+import os
 
 pl.Config.set_tbl_rows(100)
 
@@ -28,6 +29,7 @@ def compute_score_matrix(coev_path, cpu_n):
     unique_ids = df.select(pl.col("ID").unique()).to_series().to_list()
     unique_ids = sorted(unique_ids, key=str.casefold)
     matrix_size = len(unique_ids)
+    print("Total matrix length is: ", matrix_size)
 
     with Manager() as manager:
         # Prepare inputs for the worker
@@ -222,8 +224,11 @@ if __name__ == "__main__":
     if cpu_n > multiprocessing.cpu_count():
         raise RuntimeError("cpu count greater than physical cores available")
 
-    score_matrix = compute_score_matrix(coev_path, cpu_n)
-    score_matrix.write_csv("score.csv")
+    if not os.path.exists("test.parquet"):
+        score_matrix = compute_score_matrix(coev_path, cpu_n)
+        score_matrix.write_csv("score.csv")
+    else:
+        score_matrix = pl.read_parquet("test.parquet")
 
     jaccard = calculate_jaccard(score_matrix)
     jaccard.write_csv("jaccard.csv")
