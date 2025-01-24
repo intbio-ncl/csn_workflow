@@ -47,7 +47,6 @@ if __name__ == "__main__":
         type=int,
         default=4
     )
-    parser.add_argument("-a", "--aln", help="Alignment file path", type=str)
     
     data_path = Path("./data") / Path(datetime.now().strftime("%y%m%d"))
 
