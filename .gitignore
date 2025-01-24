@@ -3,3 +3,4 @@
 venv
 example/*
 data
+__pycache__
