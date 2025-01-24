@@ -17,7 +17,7 @@ def worker(clique, df, matrix_size, unique_ids):
     return clique_scoring(clique, df, matrix_size, unique_ids)
 
 
-def compute_score_matrix(coev_path, cpu_n):
+def compute_score_matrix(data_path,coev_path, cpu_n):
     """Computes ECC score matrix prior to jaccard similarity calculation"""
     # Determine cliques in coev graph
     coev_net = nx.read_graphml(coev_path)
@@ -25,13 +25,12 @@ def compute_score_matrix(coev_path, cpu_n):
     cliques_int = [list(map(int, clique)) for clique in cliques]
 
     # Import pair df
-    df = pl.read_csv("result_df.csv")
+    df = pl.read_csv(f"{data_path}/result_df.csv")
 
     # Initialise a labelled 2D score matrix
     unique_ids = df.select(pl.col("ID").unique()).to_series().to_list()
     unique_ids = sorted(unique_ids, key=str.casefold)
     matrix_size = len(unique_ids)
-    print("Total matrix length is: ", matrix_size)
 
     with Manager() as manager:
         # Prepare inputs for the worker
@@ -56,7 +55,7 @@ def compute_score_matrix(coev_path, cpu_n):
         for local_matrix in local_matrices:
             global_matrix = merge_matrices(global_matrix, local_matrix)
 
-        global_matrix.write_parquet("test.parquet")
+        global_matrix.write_parquet(f"{data_path}/test.parquet")
 
     return global_matrix
 
@@ -203,13 +202,13 @@ def compute_coevolutionary_similarity(data_path, coev_path, threshold, cpu_n):
         raise RuntimeError("cpu count greater than physical cores available")
 
     if not os.path.exists(f"{data_path}/test.parquet"):
-        score_matrix = compute_score_matrix(coev_path, cpu_n)
+        score_matrix = compute_score_matrix(data_path,coev_path, cpu_n)
         score_matrix.write_csv(f"{data_path}/score.csv")
     else:
         score_matrix = pl.read_parquet(f"{data_path}/test.parquet")
 
     jaccard = calculate_jaccard(score_matrix)
-    jaccard.write_csv(f"{data_path}jaccard.csv")
+    jaccard.write_csv(f"{data_path}/jaccard.csv")
 
     create_csn(data_path, jaccard, threshold)
 
@@ -243,13 +242,13 @@ if __name__ == "__main__":
     if cpu_n > multiprocessing.cpu_count():
         raise RuntimeError("cpu count greater than physical cores available")
 
-    if not os.path.exists("test.parquet"):
-        score_matrix = compute_score_matrix(coev_path, cpu_n)
-        score_matrix.write_csv("score.csv")
+    if not os.path.exists(f"{data_path}/test.parquet"):
+        score_matrix = compute_score_matrix(data_path,coev_path, cpu_n)
+        score_matrix.write_csv(f"{data_path}/score.csv")
     else:
-        score_matrix = pl.read_parquet("test.parquet")
+        score_matrix = pl.read_parquet(f"{data_path}/test.parquet")
 
     jaccard = calculate_jaccard(score_matrix)
-    jaccard.write_csv("jaccard.csv")
+    jaccard.write_csv(f"{data_path}/jaccard.csv")
 
     create_csn(data_path, jaccard, threshold)

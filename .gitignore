@@ -1,3 +1,5 @@
 .nextflow.log*
 .nextflow
 venv
+example/*
+data

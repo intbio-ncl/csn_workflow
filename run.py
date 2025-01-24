@@ -48,7 +48,7 @@ if __name__ == "__main__":
         default=4
     )
     
-    data_path = Path("./data") / Path(datetime.now().strftime("%y%m%d"))
+    data_path = Path("./data") / Path(datetime.now().strftime("%y%m%d%m"))
 
     if not data_path.exists():
         # Create the directory (including intermediate directories if needed)
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     cpu_n = args.cpu
 
     create_network(data_path, ccmpred_file, "coevolutionary_network", node_number)
-    create_alignment_network(data_path, coev_cutoff, f"{data_path}/coeveolutionary_network.graphml", "alignment_network", alignment_file)
+    create_alignment_network(data_path, coev_cutoff, f"{data_path}/coevolutionary_network.graphml", "alignment_network", alignment_file)
     compute_coevolutionary_similarity(data_path, f"{data_path}/coevolutionary_network.graphml", threshold, cpu_n)
 
 

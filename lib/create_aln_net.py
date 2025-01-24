@@ -71,7 +71,7 @@ def readCoevNetworkVec(seq, G, aln_vec, pair_dict):
     return pair_dict
 
 
-def construct_df(pair_dict):
+def construct_df(data_path, pair_dict):
     """Creates a polars dataframe with ID seq.id and then 4 columns containing
     residue information"""
     frames = []
@@ -86,12 +86,12 @@ def construct_df(pair_dict):
     result = pl.concat(frames, how="vertical")
 
     result = result.select(["ID"] + [col for col in result.columns if col != "ID"])
-    result.write_csv("id_df.csv")
+    result.write_csv(f"{data_path}/id_df.csv")
 
     return result
 
 
-def compute_frequencies(df):
+def compute_frequencies(data_path, df):
     """Computes how often coev resiudes occur"""
 
     frequency_df = df.group_by(["source_aln", "sink_aln"]).agg(
@@ -101,22 +101,21 @@ def compute_frequencies(df):
     )
 
     frequency_df = frequency_df.sort("frequency", descending=True)
-    frequency_df.write_csv("freq.csv")
+    frequency_df.write_csv(f"{data_path}/freq.csv")
 
     return frequency_df
 
 
-def remove_noise(df, cutoff):
+def remove_noise(data_path, df, cutoff):
     """Removes coevs if they occur in n% of sequences"""
 
     filtered_df = df.filter(pl.col("frequency") <= cutoff)
-
-    filtered_df.write_csv("filtered_df.csv")
+    filtered_df.write_csv(f"{data_path}/filtered_df.csv")
 
     return filtered_df
 
 
-def createALNGraphDf(freq_df, full_df):
+def createALNGraphDf(data_path, freq_df, full_df):
     """Creates alignment network from dataframe"""
 
     G = nx.Graph()
@@ -134,7 +133,7 @@ def createALNGraphDf(freq_df, full_df):
             pl.col("sink_aa"),
         ]
     )
-    result_df.write_csv("result_df.csv")
+    result_df.write_csv(f"{data_path}/result_df.csv")
     G = extract_links(result_df, G)
     # filtered_rows = result_df.filter(pl.col("sink_aln") == 420)
 
@@ -188,12 +187,12 @@ def create_alignment_network(data_path, coev_cutoff, coev_graph_path, aln_graph_
         aln_vec = createAlnVec(current_seq)
         pair_vec = readCoevNetworkVec(current_seq, G, aln_vec, pair_dict)
 
-    df = construct_df(pair_dict)
+    df = construct_df(data_path, pair_dict)
 
-    frequencies = compute_frequencies(df)
-    cleaned = remove_noise(frequencies, cutoff)
+    frequencies = compute_frequencies(data_path,df)
+    cleaned = remove_noise(data_path,frequencies, cutoff)
 
-    G = createALNGraphDf(cleaned, df)
+    G = createALNGraphDf(data_path,cleaned, df)
 
     print(f"Writing ALN Graph to {aln_graph_name}")
     nx.write_graphml(G, f"{data_path}/{aln_graph_name}.graphml")
@@ -229,12 +228,12 @@ if __name__ == "__main__":
         aln_vec = createAlnVec(current_seq)
         pair_vec = readCoevNetworkVec(current_seq, G, aln_vec, pair_dict)
 
-    df = construct_df(pair_dict)
+    df = construct_df(data_path,pair_dict)
 
-    frequencies = compute_frequencies(df)
-    cleaned = remove_noise(frequencies, cutoff)
+    frequencies = compute_frequencies(data_path,df)
+    cleaned = remove_noise(data_path,frequencies, cutoff)
 
-    G = createALNGraphDf(cleaned, df)
+    G = createALNGraphDf(data_path,cleaned, df)
 
     print(f"Writing ALN Graph to {aln_graph_name}")
     nx.write_graphml(G, f"{data_path}/{aln_graph_name}.graphml")
