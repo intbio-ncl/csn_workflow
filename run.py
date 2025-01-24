@@ -1,7 +1,7 @@
-from lib.coev_net_creator import create_network
+from lib.coevolutionary_network_generator import create_network
 from datetime import datetime
-from lib.create_aln_net import create_alignment_network
-from lib.computeCoevSimilarity import compute_coevolutionary_similarity
+from lib.alignment_network_generator import create_alignment_network
+from lib.coev_similarity_network_generator import compute_coevolutionary_similarity
 import argparse
 from pathlib import Path
 import os

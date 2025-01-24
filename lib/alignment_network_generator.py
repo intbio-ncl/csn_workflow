@@ -4,7 +4,7 @@ from Bio import AlignIO
 import networkx as nx
 from itertools import combinations
 import polars as pl
-from pathlib import Path 
+from pathlib import Path
 from datetime import datetime
 
 
@@ -174,8 +174,9 @@ def extract_links(df, G):
     return G
 
 
-def create_alignment_network(data_path, coev_cutoff, coev_graph_path, aln_graph_name, alignment_file):
-    
+def create_alignment_network(
+    data_path, coev_cutoff, coev_graph_path, aln_graph_name, alignment_file
+):
     alignment = AlignIO.read(alignment_file, "clustal")
     seq_number = len(alignment)
     cutoff = seq_number * coev_cutoff
@@ -189,10 +190,10 @@ def create_alignment_network(data_path, coev_cutoff, coev_graph_path, aln_graph_
 
     df = construct_df(data_path, pair_dict)
 
-    frequencies = compute_frequencies(data_path,df)
-    cleaned = remove_noise(data_path,frequencies, cutoff)
+    frequencies = compute_frequencies(data_path, df)
+    cleaned = remove_noise(data_path, frequencies, cutoff)
 
-    G = createALNGraphDf(data_path,cleaned, df)
+    G = createALNGraphDf(data_path, cleaned, df)
 
     print(f"Writing ALN Graph to {aln_graph_name}")
     nx.write_graphml(G, f"{data_path}/{aln_graph_name}.graphml")
@@ -228,12 +229,12 @@ if __name__ == "__main__":
         aln_vec = createAlnVec(current_seq)
         pair_vec = readCoevNetworkVec(current_seq, G, aln_vec, pair_dict)
 
-    df = construct_df(data_path,pair_dict)
+    df = construct_df(data_path, pair_dict)
 
-    frequencies = compute_frequencies(data_path,df)
-    cleaned = remove_noise(data_path,frequencies, cutoff)
+    frequencies = compute_frequencies(data_path, df)
+    cleaned = remove_noise(data_path, frequencies, cutoff)
 
-    G = createALNGraphDf(data_path,cleaned, df)
+    G = createALNGraphDf(data_path, cleaned, df)
 
     print(f"Writing ALN Graph to {aln_graph_name}")
     nx.write_graphml(G, f"{data_path}/{aln_graph_name}.graphml")
