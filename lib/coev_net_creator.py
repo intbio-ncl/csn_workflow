@@ -1,9 +1,10 @@
 import numpy as np
 import networkx as nx
 from copy import deepcopy
+from datetime import datetime 
+from pathlib import Path
 
-
-def createNetwork(file, output_name, node_number):
+def create_network(data_path, file, output_name, node_number):
     """Creates an alignment network of resiude-residue coeveolution positions"""
 
     temp_mat = np.loadtxt(file)
@@ -30,7 +31,9 @@ def createNetwork(file, output_name, node_number):
             str(indices[1][i] + 1),
         )
 
-    nx.write_graphml(G, f"{output_name}.graphml")
+    nx.write_graphml(G, f"{str(data_path)}/{output_name}.graphml")
+
+
 
 
 if __name__ == "__main__":
@@ -59,10 +62,11 @@ if __name__ == "__main__":
         type=str,
         required=True,
     )
+    data_path = Path("./data") / Path(datetime.now().strftime("%y%m%d&m"))
 
     args = parser.parse_args()
     ccmpred_file = args.file
     coev_graph_name = args.output_name
     node_number = args.num
 
-    createNetwork(ccmpred_file, coev_graph_name, node_number)
+    create_network(data_path, ccmpred_file, coev_graph_name, node_number)

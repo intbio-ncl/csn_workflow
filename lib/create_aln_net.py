@@ -4,29 +4,28 @@ from Bio import AlignIO
 import networkx as nx
 from itertools import combinations
 import polars as pl
+from pathlib import Path 
+from datetime import datetime
 
 
 def createAlnVec(seq):
-    """Alternative 2D matrix for actual residue position in alignment"""
+    """Vec where index = sequence position and value = alignment position"""
 
     aln_vec = []
     gapped_seq = str(seq.seq)
-
-    count = 1
 
     for i in range(len(gapped_seq)):
         if gapped_seq[i] == "-":
             continue
 
         aln_vec.append(i + 1)
-        count += 1
 
     return aln_vec
 
 
-def readCoevNetworkVec(seq, file, aln_vec, pair_dict):
-    """outputs newtwork as duplex tuple vec, (res_aln, res_prot)(res_aln, res_prot)"""
-    G = nx.read_graphml(file)
+def readCoevNetworkVec(seq, G, aln_vec, pair_dict):
+    """outputs network as duplex tuple vec, (res_aln, res_prot)(res_aln, res_prot)"""
+
     source_aln_vec = []
     source_aa_vec = []
     sink_aln_vec = []
@@ -36,6 +35,7 @@ def readCoevNetworkVec(seq, file, aln_vec, pair_dict):
         source = int(edge[0].split("-")[-1])
         sink = int(edge[1].split("-")[-1])
 
+        # swap so greater residue is always last
         if source > sink:
             temp = sink
             sink = source
@@ -43,8 +43,8 @@ def readCoevNetworkVec(seq, file, aln_vec, pair_dict):
 
         try:
             # Ensures that ValueError is captured prior to any list extension
-            source_index = aln_vec.index(source)
-            sink_index = aln_vec.index(sink)
+            source_index = aln_vec.index(source) + 1
+            sink_index = aln_vec.index(sink) + 1
 
             source_aln_vec.append(source)
             source_aa_vec.append(source_index)
@@ -96,7 +96,7 @@ def compute_frequencies(df):
 
     frequency_df = df.group_by(["source_aln", "sink_aln"]).agg(
         [
-            pl.col("ID").count().alias("frequency"),  # Count occurrences
+            pl.col("ID").count().alias("frequency"),
         ]
     )
 
@@ -175,6 +175,30 @@ def extract_links(df, G):
     return G
 
 
+def create_alignment_network(data_path, coev_cutoff, coev_graph_path, aln_graph_name, alignment_file):
+    
+    alignment = AlignIO.read(alignment_file, "clustal")
+    seq_number = len(alignment)
+    cutoff = seq_number * coev_cutoff
+    pair_dict = {}
+
+    G = nx.read_graphml(coev_graph_path)
+    for x in range(seq_number):
+        current_seq = alignment[x]
+        aln_vec = createAlnVec(current_seq)
+        pair_vec = readCoevNetworkVec(current_seq, G, aln_vec, pair_dict)
+
+    df = construct_df(pair_dict)
+
+    frequencies = compute_frequencies(df)
+    cleaned = remove_noise(frequencies, cutoff)
+
+    G = createALNGraphDf(cleaned, df)
+
+    print(f"Writing ALN Graph to {aln_graph_name}")
+    nx.write_graphml(G, f"{data_path}/{aln_graph_name}.graphml")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Alignment Network Creator Script")
     parser.add_argument(
@@ -187,6 +211,7 @@ if __name__ == "__main__":
     parser.add_argument("-g", "--coev", help="Coev graph file path", type=str)
     parser.add_argument("-o", "--output", help="Alignment graph file name", type=str)
     args = parser.parse_args()
+    data_path = Path("./data") / Path(datetime.now().strftime("%y%m%d"))
 
     coev_cutoff = args.filter
     coev_graph_path = args.coev
@@ -198,10 +223,11 @@ if __name__ == "__main__":
     cutoff = seq_number * coev_cutoff
     pair_dict = {}
 
+    G = nx.read_graphml(coev_graph_path)
     for x in range(seq_number):
         current_seq = alignment[x]
         aln_vec = createAlnVec(current_seq)
-        pair_vec = readCoevNetworkVec(current_seq, coev_graph_path, aln_vec, pair_dict)
+        pair_vec = readCoevNetworkVec(current_seq, G, aln_vec, pair_dict)
 
     df = construct_df(pair_dict)
 
@@ -211,4 +237,4 @@ if __name__ == "__main__":
     G = createALNGraphDf(cleaned, df)
 
     print(f"Writing ALN Graph to {aln_graph_name}")
-    nx.write_graphml(G, f"{aln_graph_name}.graphml")
+    nx.write_graphml(G, f"{data_path}/{aln_graph_name}.graphml")
