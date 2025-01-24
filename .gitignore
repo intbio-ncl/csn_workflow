@@ -1,6 +1,5 @@
 .nextflow.log*
 .nextflow
 venv
-example/*
 data
 __pycache__
