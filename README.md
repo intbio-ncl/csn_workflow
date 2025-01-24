@@ -15,7 +15,7 @@ pip install -r requirements.txt
 
 To install CCMPred fork:
 ```
-git clone --recursive https://github.com/mburridge96/CCMpred.git
+git clone https://github.com/mburridge96/CCMpred.git
 
 cd CCMpred 
 
