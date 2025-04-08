@@ -62,7 +62,7 @@ if __name__ == "__main__":
         type=str,
         required=True,
     )
-    data_path = Path.cwd() / Path(datetime.now().strftime("%y%m%d&m"))
+    data_path = Path.cwd() / Path("test")
 
     args = parser.parse_args()
     ccmpred_file = args.file
