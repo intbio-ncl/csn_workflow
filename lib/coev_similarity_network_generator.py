@@ -17,7 +17,7 @@ def worker(clique, df, matrix_size, unique_ids):
     return clique_scoring(clique, df, matrix_size, unique_ids)
 
 
-def compute_score_matrix(data_path,coev_path, cpu_n):
+def compute_score_matrix(data_path, coev_path, cpu_n):
     """Computes ECC score matrix prior to jaccard similarity calculation"""
     # Determine cliques in coev graph
     coev_net = nx.read_graphml(coev_path)
@@ -194,15 +194,16 @@ def create_csn(data_path, jaccard_matrix, threshold):
         if e != 0.0 and e > threshold:
             G.add_edge(v1, v2, similarity=e)
 
-    nx.write_graphml(G, f"{data_path}/csn_vec_{threshold*100}.graphml")
+    nx.write_graphml(G, f"{data_path}/csn_vec_{threshold * 100}.graphml")
     print("CSN has been created")
+
 
 def compute_coevolutionary_similarity(data_path, coev_path, threshold, cpu_n):
     if cpu_n > multiprocessing.cpu_count():
         raise RuntimeError("cpu count greater than physical cores available")
 
     if not os.path.exists(f"{data_path}/test.parquet"):
-        score_matrix = compute_score_matrix(data_path,coev_path, cpu_n)
+        score_matrix = compute_score_matrix(data_path, coev_path, cpu_n)
         score_matrix.write_csv(f"{data_path}/score.csv")
     else:
         score_matrix = pl.read_parquet(f"{data_path}/test.parquet")
@@ -211,7 +212,6 @@ def compute_coevolutionary_similarity(data_path, coev_path, threshold, cpu_n):
     jaccard.write_csv(f"{data_path}/jaccard.csv")
 
     create_csn(data_path, jaccard, threshold)
-
 
 
 if __name__ == "__main__":
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         required=True,
     )
     args = parser.parse_args()
-    data_path = Path("./data") / Path(datetime.now().strftime("%y%m%d"))
+    data_path = Path(datetime.now().strftime("%y%m%d"))
 
     coev_path = args.coev
     threshold = args.threshold
@@ -243,7 +243,7 @@ if __name__ == "__main__":
         raise RuntimeError("cpu count greater than physical cores available")
 
     if not os.path.exists(f"{data_path}/test.parquet"):
-        score_matrix = compute_score_matrix(data_path,coev_path, cpu_n)
+        score_matrix = compute_score_matrix(data_path, coev_path, cpu_n)
         score_matrix.write_csv(f"{data_path}/score.csv")
     else:
         score_matrix = pl.read_parquet(f"{data_path}/test.parquet")
