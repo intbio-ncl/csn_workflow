@@ -211,7 +211,7 @@ if __name__ == "__main__":
     parser.add_argument("-g", "--coev", help="Coev graph file path", type=str)
     parser.add_argument("-o", "--output", help="Alignment graph file name", type=str)
     args = parser.parse_args()
-    data_path = Path(datetime.now().strftime("%y%m%d"))
+    data_path = Path.cwd() / Path(datetime.now().strftime("%y%m%d"))
 
     coev_cutoff = args.filter
     coev_graph_path = args.coev

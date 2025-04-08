@@ -234,7 +234,7 @@ if __name__ == "__main__":
         required=True,
     )
     args = parser.parse_args()
-    data_path = Path(datetime.now().strftime("%y%m%d"))
+    data_path = Path.cwd() / Path(datetime.now().strftime("%y%m%d"))
 
     coev_path = args.coev
     threshold = args.threshold

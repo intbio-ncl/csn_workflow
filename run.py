@@ -47,7 +47,7 @@ if __name__ == "__main__":
         default=4,
     )
     cwd = os.getcwd()
-    data_path = Path(datetime.now().strftime("%y%m%d%H"))
+    data_path = Path.cwd() / Path(datetime.now().strftime("%y%m%d%H"))
 
     if not data_path.exists():
         # Create the directory (including intermediate directories if needed)
