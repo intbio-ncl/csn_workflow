@@ -182,7 +182,7 @@ def create_alignment_network(
     cutoff = seq_number * coev_cutoff
     pair_dict = {}
 
-    G = nx.read_graphml(coev_graph_path)
+    G = nx.read_gml(coev_graph_path)
     for x in range(seq_number):
         current_seq = alignment[x]
         aln_vec = createAlnVec(current_seq)
@@ -196,7 +196,7 @@ def create_alignment_network(
     G = createALNGraphDf(data_path, cleaned, df)
 
     print(f"Writing ALN Graph to {aln_graph_name}")
-    nx.write_graphml(G, f"{data_path}/{aln_graph_name}.graphml")
+    nx.write_gml(G, f"{data_path}/{aln_graph_name}.gml")
 
 
 if __name__ == "__main__":
@@ -223,7 +223,7 @@ if __name__ == "__main__":
     cutoff = seq_number * coev_cutoff
     pair_dict = {}
 
-    G = nx.read_graphml(coev_graph_path)
+    G = nx.read_gml(coev_graph_path)
     for x in range(seq_number):
         current_seq = alignment[x]
         aln_vec = createAlnVec(current_seq)
@@ -237,4 +237,4 @@ if __name__ == "__main__":
     G = createALNGraphDf(data_path, cleaned, df)
 
     print(f"Writing ALN Graph to {aln_graph_name}")
-    nx.write_graphml(G, f"{data_path}/{aln_graph_name}.graphml")
+    nx.write_gml(G, f"{data_path}/{aln_graph_name}.gml")

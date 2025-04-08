@@ -33,7 +33,7 @@ def create_network(data_path, file, output_name, node_number):
             str(indices[1][i] + 1),
         )
 
-    nx.write_graphml(G, f"{str(data_path)}/{output_name}.graphml")
+    nx.write_gml(G, f"{str(data_path)}/{output_name}.gml")
 
 
 if __name__ == "__main__":

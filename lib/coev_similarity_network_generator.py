@@ -20,7 +20,7 @@ def worker(clique, df, matrix_size, unique_ids):
 def compute_score_matrix(data_path, coev_path, cpu_n):
     """Computes ECC score matrix prior to jaccard similarity calculation"""
     # Determine cliques in coev graph
-    coev_net = nx.read_graphml(coev_path)
+    coev_net = nx.read_gml(coev_path)
     cliques = list(nx.find_cliques(coev_net))
     cliques_int = [list(map(int, clique)) for clique in cliques]
 
@@ -189,13 +189,14 @@ def create_csn(data_path, jaccard_matrix, threshold):
     target = jaccard_matrix["id2"].to_list()
     score = jaccard_matrix["jaccard"].to_list()
 
-    for v1, v2, e in zip(source, target, score):
-        G.add_node(v1)
-        if e != 0.0 and e > threshold:
-            G.add_edge(v1, v2, similarity=e)
+    for target_threshold in threshold:
+        for v1, v2, e in zip(source, target, score):
+            G.add_node(v1)
+            if e != 0.0 and e > target_threshold:
+                G.add_edge(v1, v2, similarity=e)
 
-    nx.write_graphml(G, f"{data_path}/csn_vec_{threshold * 100}.graphml")
-    print("CSN has been created")
+        nx.write_gml(G, f"{data_path}/csn_vec_{target_threshold * 100}.gml")
+        print("CSN has been created")
 
 
 def compute_coevolutionary_similarity(data_path, coev_path, threshold, cpu_n):
@@ -237,7 +238,6 @@ if __name__ == "__main__":
     data_path = Path.cwd() / Path("test")
 
     coev_path = args.coev
-    threshold = args.threshold
     cpu_n = args.cpu
     if cpu_n > multiprocessing.cpu_count():
         raise RuntimeError("cpu count greater than physical cores available")
@@ -251,4 +251,5 @@ if __name__ == "__main__":
     jaccard = calculate_jaccard(score_matrix)
     jaccard.write_csv(f"{data_path}/jaccard.csv")
 
+    threshold = [20, 40, 60, 80, 90, 95, 97.5, 99, 99.5]
     create_csn(data_path, jaccard, threshold)

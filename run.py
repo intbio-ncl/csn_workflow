@@ -65,10 +65,10 @@ if __name__ == "__main__":
     create_alignment_network(
         data_path,
         coev_cutoff,
-        f"{data_path}/coevolutionary_network.graphml",
+        f"{data_path}/coevolutionary_network.gml",
         "alignment_network",
         alignment_file,
     )
     compute_coevolutionary_similarity(
-        data_path, f"{data_path}/coevolutionary_network.graphml", threshold, cpu_n
+        data_path, f"{data_path}/coevolutionary_network.gml", threshold, cpu_n
     )
