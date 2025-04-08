@@ -244,5 +244,5 @@ if __name__ == "__main__":
     jaccard = calculate_jaccard(score_matrix)
     jaccard.write_csv(f"{data_path}/jaccard.csv")
 
-    threshold = [0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.975, 0.99, 0.995]
+    threshold = [0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.975, 0.99, 0.995, 0.9975, 0.9990]
     create_csn(data_path, jaccard, threshold)
