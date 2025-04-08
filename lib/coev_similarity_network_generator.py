@@ -221,13 +221,6 @@ if __name__ == "__main__":
         "-cg", "--coev", help="Coevolutionary Graph", type=str, required=True
     )
     parser.add_argument(
-        "-t",
-        "--threshold",
-        help="Threshold for similarity (i.e 0.4 for 40% or more)",
-        type=float,
-        required=True,
-    )
-    parser.add_argument(
         "-c",
         "--cpu",
         help="Number of cores to use for multiprocessing",
@@ -251,5 +244,5 @@ if __name__ == "__main__":
     jaccard = calculate_jaccard(score_matrix)
     jaccard.write_csv(f"{data_path}/jaccard.csv")
 
-    threshold = [20, 40, 60, 80, 90, 95, 97.5, 99, 99.5]
+    threshold = [0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.975, 0.99, 0.995]
     create_csn(data_path, jaccard, threshold)
